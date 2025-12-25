@@ -1,0 +1,138 @@
+name: CI - Orders API
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'api-orders/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'api-orders/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: orders_test_db
+          POSTGRES_USER: orders_test_user
+          POSTGRES_PASSWORD: orders_test_password
+        ports:
+          - 5435:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      rabbitmq:
+        image: rabbitmq:3-management-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: test_user
+          RABBITMQ_DEFAULT_PASS: test_pass
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    defaults:
+      run:
+        working-directory: api-orders
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-test.txt
+    
+    - name: Lint with flake8
+      run: |
+        pip install flake8
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 app --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Exit-zero treats all errors as warnings
+        flake8 app --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics
+    
+    - name: Run tests
+      env:
+        DATABASE_URL: postgresql+asyncpg://orders_test_user:orders_test_password@localhost:5435/orders_test_db
+        RABBITMQ_HOST: localhost
+        RABBITMQ_PORT: 5672
+        RABBITMQ_USER: test_user
+        RABBITMQ_PASSWORD: test_pass
+      run: |
+        pytest tests/ -v --cov=app --cov-report=xml --cov-report=term
+    
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./api-orders/coverage.xml
+        flags: unittests
+        name: codecov-orders
+        fail_ci_if_error: false
+
+  lint:
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: api-orders
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install black isort mypy
+    
+    - name: Check code formatting with black
+      run: black --check app tests
+    
+    - name: Check import sorting with isort
+      run: isort --check-only app tests
+    
+    - name: Type check with mypy
+      run: mypy app --ignore-missing-imports
+
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Build Docker image
+      run: |
+        cd api-orders
+        docker build -t orders-api:${{ github.sha }} .
+    
+    - name: Test Docker image
+      run: |
+        docker run --rm orders-api:${{ github.sha }} python -c "import app; print('Import successful')"
