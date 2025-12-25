@@ -3,7 +3,8 @@ Validators utility for data validation.
 """
 from typing import Dict, Any, List
 from decimal import Decimal
-from pydantic import UUID4, EmailStr, ValidationError
+from pydantic import ValidationError, field_validator
+from pydantic_core import PydanticCustomError
 import re
 
 
@@ -51,12 +52,10 @@ class OrderValidator:
     
     @staticmethod
     def validate_email(email: str) -> bool:
-        """Validate email format."""
-        try:
-            EmailStr._validate(email)
-            return True
-        except ValidationError:
-            return False
+        """Validate email format using simple regex."""
+        # Simple email validation using regex
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        return bool(re.match(email_pattern, email))
     
     @staticmethod
     def validate_order_transition(
