@@ -2,16 +2,14 @@
 nixPkgs = ["python311", "postgresql"]
 
 [phases.install]
-cmds = [
-  "cd api-orders",
-  "pip install -r requirements.txt"
-]
+cmds = ["pip install -r api-orders/requirements.txt"]
 
 [phases.build]
-cmds = ["cd api-orders && python -c 'import app.main'"]
+cmds = ["sh -c 'cd api-orders && python -c \"import app.main\"'"]
 
 [start]
-cmd = "bash start.sh"
+cmd = "sh -c 'cd api-orders && export PYTHONPATH=${PYTHONPATH}:$(pwd) && alembic upgrade head || true && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8003}'"
 
 [variables]
 PYTHONUNBUFFERED = "1"
+PYTHONDONTWRITEBYTECODE = "1"
