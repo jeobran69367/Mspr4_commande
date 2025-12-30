@@ -4,6 +4,9 @@ FastAPI main application for Orders Service.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from alembic import command
+from alembic.config import Config
+import os
 
 from app.config import settings
 from app.api.v1 import api_router
@@ -22,19 +25,36 @@ from app.events.handlers.product_events import (
 )
 
 
+def run_migrations():
+    """
+    Run Alembic migrations.
+    """
+    alembic_cfg = Config("alembic.ini")
+    command.upgrade(alembic_cfg, "head")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events."""
+
+    # ------------------
     # Startup
+    # ------------------
     print("Starting Orders Service...")
-    
+
+    # Run migrations (DEV / TEST only)
+    if os.getenv("RUN_MIGRATIONS", "true").lower() == "true":
+        print("Running database migrations...")
+        run_migrations()
+        print("Database migrations completed")
+
     # Initialize event producer
     producer = await get_event_producer()
     print("Event producer initialized")
-    
+
     # Initialize event consumer
     consumer = await get_event_consumer()
-    
+
     # Register event handlers
     consumer.register_handler("customer.created", handle_customer_created)
     consumer.register_handler("customer.updated", handle_customer_updated)
@@ -43,17 +63,14 @@ async def lifespan(app: FastAPI):
     consumer.register_handler("product.updated", handle_product_updated)
     consumer.register_handler("product.deleted", handle_product_deleted)
     consumer.register_handler("product.stock.updated", handle_product_stock_updated)
-    
-    # Start consuming (non-blocking)
-    # await consumer.start_consuming(
-    #     queue_name=settings.rabbitmq_queue_orders,
-    #     binding_patterns=["customer.*", "product.*"]
-    # )
+
     print("Event consumer initialized")
-    
+
     yield
-    
+
+    # ------------------
     # Shutdown
+    # ------------------
     print("Shutting down Orders Service...")
     await producer.disconnect()
     await consumer.disconnect()
@@ -84,7 +101,6 @@ app.include_router(api_router, prefix="/api/v1")
 
 @app.get("/")
 async def root():
-    """Root endpoint."""
     return {
         "service": "Orders Service",
         "version": "1.0.0",
@@ -94,7 +110,6 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
     return {
         "status": "healthy",
         "service": "orders",
