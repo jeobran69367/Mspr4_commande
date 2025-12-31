@@ -140,3 +140,20 @@ async def get_event_consumer() -> EventConsumer:
         _consumer = EventConsumer()
         await _consumer.connect()
     return _consumer
+
+
+import pytest
+from unittest.mock import AsyncMock
+from app.events.consumer import EventConsumer
+
+@pytest.mark.asyncio
+async def test_event_consumer():
+    mock_consumer = EventConsumer()
+    mock_consumer.connect = AsyncMock()
+    mock_consumer.start_consuming = AsyncMock()
+
+    await mock_consumer.connect()
+    mock_consumer.connect.assert_called_once()
+
+    await mock_consumer.start_consuming()
+    mock_consumer.start_consuming.assert_called_once()
