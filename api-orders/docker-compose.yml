@@ -1,4 +1,7 @@
+version: '3.8'
+
 services:
+  # Database
   orders-db:
     image: postgres:15-alpine
     container_name: orders-db
@@ -10,12 +13,16 @@ services:
       - "5435:5432"
     volumes:
       - orders-db-data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U orders_user -d orders_db"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - orders-network
 
+  # API Service
   orders-api:
     build:
       context: .
@@ -25,22 +32,62 @@ services:
       orders-db:
         condition: service_healthy
     environment:
+      # Database
       DATABASE_URL: postgresql+asyncpg://orders_user:orders_password@orders-db:5432/orders_db
-      RABBITMQ_HOST: host.docker.internal
+      
+      # RabbitMQ (si vous en avez un)
+      RABBITMQ_HOST: rabbitmq  # ou l'IP de votre RabbitMQ
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: payetonkawa
       RABBITMQ_PASSWORD: payetonkawa123
-      API_PORT: 8003
+      
+      # Other services (si déployés)
       CUSTOMER_SERVICE_URL: http://host.docker.internal:8001
       PRODUCT_SERVICE_URL: http://host.docker.internal:8002
+      
+      # App settings
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      DEBUG: "true"
+      LOG_LEVEL: "info"
+      
     ports:
-      - "8003:8003"
+      - "8003:8000"  # 🔥 CORRECTION ICI : 8003 externe → 8000 interne
+      
     volumes:
-      - ./app:/app/app
-      - ./migrations:/app/migrations
+      - .:/app  # 🔥 CORRECTION ICI : Monte tout pour le dev
+      - /app/__pycache__  # Évite les problèmes de cache
+      
+    # Command avec migrations automatiques
     command: >
-      sh -c "alembic upgrade head && 
-             uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload"
+      sh -c "
+        echo 'Waiting for database...' &&
+        sleep 5 &&
+        echo 'Running migrations...' &&
+        python -c '
+        import asyncio
+        import sys
+        sys.path.append(\"/app\")
+        from app.database import run_migrations
+        asyncio.run(run_migrations())
+        ' &&
+        echo 'Starting server...' &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+      
+    networks:
+      - orders-network
 
 volumes:
   orders-db-data:
+
+networks:
+  orders-network:
+    driver: bridge
