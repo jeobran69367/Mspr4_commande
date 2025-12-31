@@ -3,20 +3,20 @@ Test configuration and fixtures.
 """
 import pytest
 import asyncio
+import os
 from typing import AsyncGenerator
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from httpx import AsyncClient
+from unittest.mock import AsyncMock, MagicMock
+from httpx import AsyncClient, ASGITransport
+
+# Set test environment variables before importing app
+os.environ["RUN_MIGRATIONS"] = "false"
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+os.environ["RABBITMQ_HOST"] = "localhost"
+os.environ["RABBITMQ_PORT"] = "5672"
+os.environ["RABBITMQ_USER"] = "test"
+os.environ["RABBITMQ_PASSWORD"] = "test"
 
 from app.main import app
-from app.database import Base, get_db
-from app.config import settings
-
-# Test database URL
-TEST_DATABASE_URL = "postgresql+asyncpg://orders_test_user:orders_test_password@localhost:5436/orders_test_db"
-
-# Create test engine
-test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
-TestSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
 
 @pytest.fixture(scope="session")
@@ -28,30 +28,47 @@ def event_loop():
 
 
 @pytest.fixture(scope="function")
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
-    """Create a test database session."""
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+async def client() -> AsyncGenerator[AsyncClient, None]:
+    """
+    Create a test client with mocked dependencies.
+    This avoids needing a real database or RabbitMQ connection.
+    """
+    # Mock the event producer and consumer to avoid RabbitMQ connection
+    mock_producer = AsyncMock()
+    mock_producer.connect = AsyncMock()
+    mock_producer.disconnect = AsyncMock()
+    mock_producer.publish_event = AsyncMock()
     
-    async with TestSessionLocal() as session:
-        yield session
+    mock_consumer = AsyncMock()
+    mock_consumer.connect = AsyncMock()
+    mock_consumer.disconnect = AsyncMock()
+    mock_consumer.register_handler = MagicMock()
+    mock_consumer.start_consuming = AsyncMock()
     
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-
-
-@pytest.fixture(scope="function")
-async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
-    """Create a test client."""
-    async def override_get_db():
-        yield db_session
+    # Override the lifespan to skip real connections
+    from contextlib import asynccontextmanager
     
-    app.dependency_overrides[get_db] = override_get_db
+    @asynccontextmanager
+    async def test_lifespan(app):
+        # Startup - do nothing or minimal setup
+        print("Test mode: Skipping real RabbitMQ and DB connections")
+        yield
+        # Shutdown - do nothing
+        print("Test mode: Cleanup")
     
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    # Replace the app's lifespan
+    original_lifespan = app.router.lifespan_context
+    app.router.lifespan_context = test_lifespan
+    
+    # Create test client
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test"
+    ) as ac:
         yield ac
     
-    app.dependency_overrides.clear()
+    # Restore original lifespan
+    app.router.lifespan_context = original_lifespan
 
 
 @pytest.fixture
@@ -84,33 +101,3 @@ def sample_order_data():
             }
         ]
     }
-
-
-import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
-
-DATABASE_TEST_URL = "postgresql+asyncpg://<user>:<password>@localhost:5436/<test_database>"
-
-@pytest.mark.asyncio
-async def test_database_connection():
-    engine = create_async_engine(DATABASE_TEST_URL, future=True, echo=True)
-    async with engine.connect() as conn:
-        result = await conn.execute("SELECT 1")
-        assert result.scalar() == 1
-    await engine.dispose()
-
-
-@pytest.mark.asyncio
-async def test_health_check():
-    async with AsyncClient(app=app, base_url="http://test") as client:
-        response = await client.get("/health")
-        assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
-
-
-@pytest.mark.asyncio
-async def test_root_endpoint():
-    async with AsyncClient(app=app, base_url="http://test") as client:
-        response = await client.get("/")
-        assert response.status_code == 200
-        assert "Welcome" in response.text
