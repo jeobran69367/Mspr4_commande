@@ -4,19 +4,29 @@ Test configuration and fixtures.
 import pytest
 import asyncio
 import os
+import sys
 from typing import AsyncGenerator
-from unittest.mock import AsyncMock, MagicMock
-from httpx import AsyncClient, ASGITransport
+from unittest.mock import AsyncMock, MagicMock, patch
 
-# Set test environment variables before importing app
+# Set test environment variables before importing anything
 os.environ["RUN_MIGRATIONS"] = "false"
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 os.environ["RABBITMQ_HOST"] = "localhost"
 os.environ["RABBITMQ_PORT"] = "5672"
 os.environ["RABBITMQ_USER"] = "test"
 os.environ["RABBITMQ_PASSWORD"] = "test"
+os.environ["TESTING"] = "true"
 
-from app.main import app
+# Ensure the app directory is in the path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+try:
+    from httpx import AsyncClient, ASGITransport
+    from app.main import app
+except ImportError as e:
+    print(f"Warning: Failed to import dependencies: {e}")
+    print("Make sure to install requirements: pip install -r requirements.txt")
+    raise
 
 
 @pytest.fixture(scope="session")
