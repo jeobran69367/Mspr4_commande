@@ -55,16 +55,32 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
     mock_consumer.register_handler = MagicMock()
     mock_consumer.start_consuming = AsyncMock()
     
-    # Override the lifespan to skip real connections
+    # Override the lifespan to skip real connections and create tables
     from contextlib import asynccontextmanager
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    from app.models.base import Base
     
     @asynccontextmanager
     async def test_lifespan(app):
-        # Startup - do nothing or minimal setup
-        print("Test mode: Skipping real RabbitMQ and DB connections")
+        # Startup - create in-memory database tables
+        print("Test mode: Creating in-memory SQLite tables")
+        engine = create_async_engine(
+            "sqlite+aiosqlite:///:memory:",
+            echo=False,
+            future=True
+        )
+        
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        
+        print("Test mode: Tables created, skipping RabbitMQ connections")
         yield
-        # Shutdown - do nothing
-        print("Test mode: Cleanup")
+        
+        # Shutdown - cleanup
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        await engine.dispose()
+        print("Test mode: Cleanup complete")
     
     # Replace the app's lifespan
     original_lifespan = app.router.lifespan_context

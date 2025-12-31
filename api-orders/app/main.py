@@ -45,26 +45,43 @@ async def lifespan(app: FastAPI):
     # Run migrations (DEV / TEST only)
     if os.getenv("RUN_MIGRATIONS", "true").lower() == "true":
         print("Running database migrations...")
-        run_migrations()
-        print("Database migrations completed")
+        try:
+            run_migrations()
+            print("Database migrations completed")
+        except Exception as e:
+            print(f"Warning: Migration failed: {e}")
+            print("Continuing startup anyway...")
 
-    # Initialize event producer
-    producer = await get_event_producer()
-    print("Event producer initialized")
+    # Initialize event producer (with error handling)
+    producer = None
+    consumer = None
+    
+    try:
+        producer = await get_event_producer()
+        print("Event producer initialized")
+    except Exception as e:
+        print(f"Warning: Could not initialize event producer: {e}")
+        print("Continuing without event producer (RabbitMQ may be unavailable)")
 
-    # Initialize event consumer
-    consumer = await get_event_consumer()
+    # Initialize event consumer (with error handling)
+    try:
+        consumer = await get_event_consumer()
 
-    # Register event handlers
-    consumer.register_handler("customer.created", handle_customer_created)
-    consumer.register_handler("customer.updated", handle_customer_updated)
-    consumer.register_handler("customer.deleted", handle_customer_deleted)
-    consumer.register_handler("product.created", handle_product_created)
-    consumer.register_handler("product.updated", handle_product_updated)
-    consumer.register_handler("product.deleted", handle_product_deleted)
-    consumer.register_handler("product.stock.updated", handle_product_stock_updated)
+        # Register event handlers
+        consumer.register_handler("customer.created", handle_customer_created)
+        consumer.register_handler("customer.updated", handle_customer_updated)
+        consumer.register_handler("customer.deleted", handle_customer_deleted)
+        consumer.register_handler("product.created", handle_product_created)
+        consumer.register_handler("product.updated", handle_product_updated)
+        consumer.register_handler("product.deleted", handle_product_deleted)
+        consumer.register_handler("product.stock.updated", handle_product_stock_updated)
 
-    print("Event consumer initialized")
+        print("Event consumer initialized")
+    except Exception as e:
+        print(f"Warning: Could not initialize event consumer: {e}")
+        print("Continuing without event consumer (RabbitMQ may be unavailable)")
+
+    print("Orders Service startup complete!")
 
     yield
 
@@ -72,8 +89,20 @@ async def lifespan(app: FastAPI):
     # Shutdown
     # ------------------
     print("Shutting down Orders Service...")
-    await producer.disconnect()
-    await consumer.disconnect()
+    
+    if producer:
+        try:
+            await producer.disconnect()
+        except Exception as e:
+            print(f"Warning during producer shutdown: {e}")
+    
+    if consumer:
+        try:
+            await consumer.disconnect()
+        except Exception as e:
+            print(f"Warning during consumer shutdown: {e}")
+    
+    print("Orders Service shutdown complete")
 
 
 # Create FastAPI application
