@@ -98,3 +98,19 @@ async def test_database_connection():
         result = await conn.execute("SELECT 1")
         assert result.scalar() == 1
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_health_check():
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        response = await client.get("/health")
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_root_endpoint():
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        response = await client.get("/")
+        assert response.status_code == 200
+        assert "Welcome" in response.text

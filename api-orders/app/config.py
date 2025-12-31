@@ -4,7 +4,7 @@ Loads settings from environment variables.
 """
 from typing import List
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, ConfigDict
 
 
 class Settings(BaseSettings):
@@ -66,8 +66,7 @@ class Settings(BaseSettings):
     standard_shipping_cost: float = Field(default=5.99, alias="STANDARD_SHIPPING_COST")
     
     class Config:
-        env_file = ".env"
-        case_sensitive = False
+        model_config = ConfigDict(env_file=".env", case_sensitive=False)
         
     @property
     def rabbitmq_url(self) -> str:
