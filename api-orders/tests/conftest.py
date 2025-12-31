@@ -84,3 +84,17 @@ def sample_order_data():
             }
         ]
     }
+
+
+import pytest
+from sqlalchemy.ext.asyncio import create_async_engine
+
+DATABASE_TEST_URL = "postgresql+asyncpg://<user>:<password>@localhost:5436/<test_database>"
+
+@pytest.mark.asyncio
+async def test_database_connection():
+    engine = create_async_engine(DATABASE_TEST_URL, future=True, echo=True)
+    async with engine.connect() as conn:
+        result = await conn.execute("SELECT 1")
+        assert result.scalar() == 1
+    await engine.dispose()

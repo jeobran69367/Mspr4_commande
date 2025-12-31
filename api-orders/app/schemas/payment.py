@@ -4,7 +4,7 @@ Pydantic schemas for payments.
 from typing import Optional
 from datetime import datetime
 from decimal import Decimal
-from pydantic import BaseModel, UUID4
+from pydantic import BaseModel, Field, UUID4
 from enum import Enum
 
 
