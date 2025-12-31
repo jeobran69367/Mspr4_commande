@@ -64,11 +64,9 @@ services:
     # Dans docker-compose.yml
     command: >
       sh -c "
-        echo '🔧 Running database migrations...' &&
-        alembic upgrade head &&
-        echo '✅ Migrations completed' &&
-        echo '🚀 Starting FastAPI server...' &&
-        exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+        alembic upgrade head
+        # Utiliser exec pour remplacer le shell par uvicorn
+        exec uvicorn app.main:app --host 0.0.0.0 --port 8000
       "
     
     healthcheck:
