@@ -1,78 +1,70 @@
 version: '3.8'
 
 services:
-  # Database
-  orders-db:
+  # PostgreSQL Database
+  db:
     image: postgres:15-alpine
-    container_name: orders-db
     environment:
-      POSTGRES_DB: orders_db
-      POSTGRES_USER: orders_user
-      POSTGRES_PASSWORD: orders_password
+      POSTGRES_USER: ${POSTGRES_USER:-produits_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-produits_password}
+      POSTGRES_DB: ${POSTGRES_DB:-produits_db}
     ports:
-      - "5435:5432"
+      - "5432:5432"
     volumes:
-      - orders-db-data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U orders_user -d orders_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-produits_user} -d ${POSTGRES_DB:-produits_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - orders-network
 
-  # API Service
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Orders API Service
   orders-api:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: orders-api
-    depends_on:
-      orders-db:
-        condition: service_healthy
-    environment:
-      # Database
-      DATABASE_URL: postgresql+asyncpg://orders_user:orders_password@orders-db:5432/orders_db
-      
-      # RabbitMQ (si vous en avez un)
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
-      RABBITMQ_USER: payetonkawa
-      RABBITMQ_PASSWORD: payetonkawa123
-      
-      # App settings
-      API_HOST: 0.0.0.0
-      API_PORT: 8000
-      DEBUG: "false"  # Désactivé pour la production
-      LOG_LEVEL: "info"
-
     ports:
-      - "8003:8000"  # 🔥 CORRECTION ICI : 8003 externe → 8000 interne
-      
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-produits_user}:${POSTGRES_PASSWORD:-produits_password}@db:5432/${POSTGRES_DB:-produits_db}
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      DEBUG: ${DEBUG:-True}
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     volumes:
-      - .:/app  # 🔥 Dev uniquement, à remplacer par une image optimisée en prod
-      - /app/__pycache__  # Évite les problèmes de cache
-
+      - .:/app
     command: >
       sh -c "
-        alembic upgrade head && \
-        exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+        echo 'Waiting for database...' &&
+        sleep 5 &&
+        alembic upgrade head &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
       "
-    
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-      
-    networks:
-      - orders-network
 
 volumes:
-  orders-db-data:
-
-networks:
-  orders-network:
-    driver: bridge
+  postgres_data:
