@@ -14,15 +14,22 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Remove build dependencies after installation to reduce image size
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libpq-dev \
+    postgresql-client \
+    && pip install --no-cache-dir -r requirements.txt \
+    && apt-get remove -y gcc g++ libpq-dev \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy application code
 COPY . .
 
-# Expose the port the app runs on
-EXPOSE 8003
+# Expose the correct port for production
+EXPOSE 8000
 
-# Health check - disabled for Railway (uses its own health checks)
-# HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-#   CMD python -c "import requests; requests.get('http://localhost:${PORT:-8003}/health', timeout=2)"
-
-# Run the application (Railway overrides this with startCommand)
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8003"]
+# Update CMD to ensure compatibility with production overrides
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

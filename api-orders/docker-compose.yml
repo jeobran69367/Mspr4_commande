@@ -36,36 +36,27 @@ services:
       DATABASE_URL: postgresql+asyncpg://orders_user:orders_password@orders-db:5432/orders_db
       
       # RabbitMQ (si vous en avez un)
-      RABBITMQ_HOST: rabbitmq  # ou l'IP de votre RabbitMQ
+      RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: payetonkawa
       RABBITMQ_PASSWORD: payetonkawa123
       
-      # Other services (si déployés)
-      CUSTOMER_SERVICE_URL: http://host.docker.internal:8001
-      PRODUCT_SERVICE_URL: http://host.docker.internal:8002
-      
       # App settings
       API_HOST: 0.0.0.0
       API_PORT: 8000
-      DEBUG: "true"
+      DEBUG: "false"  # Désactivé pour la production
       LOG_LEVEL: "info"
-      
+
     ports:
       - "8003:8000"  # 🔥 CORRECTION ICI : 8003 externe → 8000 interne
       
     volumes:
-      - .:/app  # 🔥 CORRECTION ICI : Monte tout pour le dev
+      - .:/app  # 🔥 Dev uniquement, à remplacer par une image optimisée en prod
       - /app/__pycache__  # Évite les problèmes de cache
 
-    
-      
-    # Command avec migrations automatiques
-    # Dans docker-compose.yml
     command: >
       sh -c "
-        alembic upgrade head
-        # Utiliser exec pour remplacer le shell par uvicorn
+        alembic upgrade head && \
         exec uvicorn app.main:app --host 0.0.0.0 --port 8000
       "
     

@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     api_host: str = Field(default="0.0.0.0", alias="API_HOST")
     api_port: int = Field(default=8003, alias="API_PORT")
     api_reload: bool = Field(default=True, alias="API_RELOAD")
-    debug: bool = Field(default=True, alias="DEBUG")
+    debug: bool = Field(default=False, alias="DEBUG")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     
     # RabbitMQ Configuration
@@ -48,13 +48,17 @@ class Settings(BaseSettings):
     payment_gateway_api_key: str = Field(default="test_key_123", alias="PAYMENT_GATEWAY_API_KEY")
     
     # Security
-    secret_key: str = Field(default="your-secret-key-change-in-production", alias="SECRET_KEY")
+    secret_key: str = Field(
+        default="your-secret-key-change-in-production",
+        alias="SECRET_KEY",
+        description="Ensure this is set securely in production"
+    )
     algorithm: str = Field(default="HS256", alias="ALGORITHM")
     access_token_expire_minutes: int = Field(default=30, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
     
     # CORS
     cors_origins: List[str] = Field(
-        default=["http://localhost:3000", "http://localhost:8000"],
+        default=[],  # Empty by default, must be set in production
         alias="CORS_ORIGINS"
     )
     
