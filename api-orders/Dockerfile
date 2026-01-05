@@ -1,35 +1,43 @@
 FROM python:3.11-slim
 
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install system dependencies in a single layer
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     libpq-dev \
     postgresql-client \
+    curl \
+    bash \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first (better caching)
+# Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Remove build dependencies after installation to reduce image size
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    libpq-dev \
-    postgresql-client \
-    && pip install --no-cache-dir -r requirements.txt \
-    && apt-get remove -y gcc g++ libpq-dev \
-    && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/*
 
 # Copy application code
 COPY . .
 
-# Expose the correct port for production
-EXPOSE 8000
+# Make entrypoint script executable
+RUN chmod +x entrypoint.sh || true
 
-# Update CMD to ensure compatibility with production overrides
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Create a non-root user for security
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Expose port 8003 (as per service specification)
+EXPOSE 8003
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8003/health || exit 1
+
+# Use entrypoint script
+ENTRYPOINT ["bash", "entrypoint.sh"]
