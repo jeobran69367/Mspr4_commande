@@ -2,13 +2,16 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including bash
 RUN apt-get update && apt-get install -y \
+    bash \
     gcc \
+    g++ \
+    libpq-dev \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
+# Copy requirements first for better caching
 COPY requirements.txt .
 
 # Install Python dependencies
@@ -18,13 +21,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ ./app/
 COPY migrations/ ./migrations/
 COPY alembic.ini .
+COPY entrypoint.sh .
+
+# Make entrypoint executable
+RUN chmod +x entrypoint.sh
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
-EXPOSE 8000
+# Expose port 8003 (service spec)
+EXPOSE 8003
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Use entrypoint script for proper startup
+ENTRYPOINT ["/app/entrypoint.sh"]
