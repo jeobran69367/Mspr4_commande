@@ -1,6 +1,6 @@
 """Models package."""
 
-from app.db.base_class import Base
+from app.models.base import Base
 
 # Orders
 from app.models.order import (
