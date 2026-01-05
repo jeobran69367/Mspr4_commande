@@ -1,43 +1,30 @@
 FROM python:3.11-slim
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
-
 WORKDIR /app
 
-# Install system dependencies in a single layer
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
     gcc \
-    g++ \
-    libpq-dev \
     postgresql-client \
-    curl \
-    bash \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
+# Copy requirements
 COPY requirements.txt .
+
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY . .
+COPY app/ ./app/
+COPY migrations/ ./migrations/
+COPY alembic.ini .
 
-# Make entrypoint script executable
-RUN chmod +x entrypoint.sh || true
-
-# Create a non-root user for security
+# Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Expose port 8003 (as per service specification)
-EXPOSE 8003
+# Expose port
+EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8003/health || exit 1
-
-# Use entrypoint script
-ENTRYPOINT ["bash", "entrypoint.sh"]
+# Run the application
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

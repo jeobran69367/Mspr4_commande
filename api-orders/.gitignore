@@ -25,7 +25,7 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-PIPFILE.lock
+MANIFEST
 
 # PyInstaller
 *.manifest
@@ -122,7 +122,7 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# IDE
+# IDEs
 .vscode/
 .idea/
 *.swp
@@ -132,19 +132,3 @@ dmypy.json
 # OS
 .DS_Store
 Thumbs.db
-
-# Docker
-*.env
-!.env.template
-
-# Database
-*.db
-*.sqlite
-
-# Alembic
-alembic/versions/*.pyc
-
-# Temporary files
-tmp/
-temp/
-*.tmp

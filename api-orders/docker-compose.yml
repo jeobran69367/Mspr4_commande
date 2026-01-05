@@ -1,89 +1,73 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  # PostgreSQL Database (port 5435 as per spec)
   db:
     image: postgres:15-alpine
     container_name: orders-db
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-orders_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-orders_password}
-      POSTGRES_DB: ${POSTGRES_DB:-orders_db}
+      POSTGRES_DB: ${DATABASE_NAME}
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
     ports:
-      - "5435:5432"
+      - "${DATABASE_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-orders_user} -d ${POSTGRES_DB:-orders_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER} -d ${DATABASE_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - orders-network
 
-  # Orders API Service (port 8003 as per spec)
-  orders-api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST}
+    ports:
+      - "${RABBITMQ_PORT}:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
     container_name: orders-api
     ports:
-      - "8003:8003"
+      - "${API_PORT}:8000"
     environment:
-      # Database Configuration
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-orders_user}:${POSTGRES_PASSWORD:-orders_password}@db:5432/${POSTGRES_DB:-orders_db}
-      DATABASE_HOST: db
-      DATABASE_PORT: 5432
-      DATABASE_NAME: ${POSTGRES_DB:-orders_db}
-      DATABASE_USER: ${POSTGRES_USER:-orders_user}
-      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-orders_password}
-      
-      # API Configuration
-      API_HOST: 0.0.0.0
-      API_PORT: 8003
-      DEBUG: ${DEBUG:-false}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      
-      # RabbitMQ Configuration (uses host RabbitMQ if available)
-      RABBITMQ_HOST: ${RABBITMQ_HOST:-host.docker.internal}
-      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
-      RABBITMQ_USER: ${RABBITMQ_USER:-payetonkawa}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-payetonkawa123}
-      
-      # External Services
-      CUSTOMER_SERVICE_URL: ${CUSTOMER_SERVICE_URL:-http://host.docker.internal:8001}
-      PRODUCT_SERVICE_URL: ${PRODUCT_SERVICE_URL:-http://host.docker.internal:8002}
-      
-      # Disable migrations in container (run manually or via startup)
-      RUN_MIGRATIONS: "false"
+      DATABASE_URL: postgresql+asyncpg://${DATABASE_USER}:${DATABASE_PASSWORD}@db:5432/${DATABASE_NAME}
+
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE}
+      RABBITMQ_QUEUE_ORDERS: ${RABBITMQ_QUEUE_ORDERS}
+      RABBITMQ_QUEUE_CUSTOMERS: ${RABBITMQ_QUEUE_CUSTOMERS}
+      RABBITMQ_QUEUE_PRODUCTS: ${RABBITMQ_QUEUE_PRODUCTS}
+
+      DEBUG: ${DEBUG}
+      LOG_LEVEL: ${LOG_LEVEL}
+      SECRET_KEY: ${SECRET_KEY}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
+
     depends_on:
       db:
         condition: service_healthy
-    volumes:
-      - .:/app
+      rabbitmq:
+        condition: service_healthy
+
     command: >
       sh -c "
-        echo '🚀 Starting Orders Service...' &&
-        echo '📊 Running database migrations...' &&
         alembic upgrade head &&
-        echo '✅ Migrations completed!' &&
-        echo '🌐 Starting API server on port 8003...' &&
-        uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload
+        uvicorn app.main:app --host 0.0.0.0 --port 8000
       "
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    networks:
-      - orders-network
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
 volumes:
   postgres_data:
-
-networks:
-  orders-network:
-    driver: bridge
