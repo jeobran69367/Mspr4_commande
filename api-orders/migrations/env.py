@@ -1,8 +1,13 @@
 """Alembic environment configuration."""
+import sys
+from pathlib import Path
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 from alembic import context
+
+# Add the parent directory to sys.path to ensure app module can be imported
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.config import settings
 from app.models import Base
