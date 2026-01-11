@@ -1,5 +1,6 @@
 """Alembic environment configuration."""
 import sys
+import os
 from pathlib import Path
 from logging.config import fileConfig
 
@@ -7,10 +8,33 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 
 # Add the parent directory to sys.path to ensure app module can be imported
-sys.path.insert(0, str(Path(__file__).parent.parent))
+parent_dir = str(Path(__file__).parent.parent)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 
-from app.config import settings
-from app.models import Base
+# Import app modules with better error handling
+try:
+    from app.config import settings
+    from app.models import Base
+except ImportError as e:
+    print(f"❌ Failed to import app modules: {e}")
+    print(f"   Current working directory: {os.getcwd()}")
+    print(f"   sys.path: {sys.path[:3]}")
+    print(f"   Attempting to find app directory...")
+    
+    # Try to provide helpful debugging info
+    app_path = Path(__file__).parent.parent / "app"
+    if app_path.exists():
+        print(f"   ✅ app directory exists at: {app_path}")
+        config_path = app_path / "config.py"
+        if config_path.exists():
+            print(f"   ✅ config.py exists")
+        else:
+            print(f"   ❌ config.py NOT found")
+    else:
+        print(f"   ❌ app directory NOT found at: {app_path}")
+    
+    raise
 
 # Alembic Config object
 config = context.config
