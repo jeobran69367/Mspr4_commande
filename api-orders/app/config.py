@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     
     # CORS
     cors_origins: List[str] = Field(
-        default=[],  # Empty by default, must be set in production
+        default_factory=lambda: ["*"],  # Allow all origins by default, restrict in production
         alias="CORS_ORIGINS"
     )
     
@@ -69,8 +69,11 @@ class Settings(BaseSettings):
     free_shipping_threshold: float = Field(default=100.00, alias="FREE_SHIPPING_THRESHOLD")
     standard_shipping_cost: float = Field(default=5.99, alias="STANDARD_SHIPPING_COST")
     
-    class Config:
-        model_config = ConfigDict(env_file=".env", case_sensitive=False)
+    model_config = ConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        extra="ignore"
+    )
         
     @property
     def rabbitmq_url(self) -> str:
