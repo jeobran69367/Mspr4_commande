@@ -35,13 +35,31 @@ except ImportError as e:
         print(f"   ❌ app directory NOT found at: {app_path}")
     
     raise
+except Exception as e:
+    print(f"❌ Error loading app configuration: {e}")
+    print(f"   Error type: {type(e).__name__}")
+    import traceback
+    print(f"   Traceback: {traceback.format_exc()}")
+    raise
 
 # Alembic Config object
 config = context.config
 
-# ⚠️ Alembic DOIT utiliser une URL SYNCHRONE
-sync_database_url = settings.database_url.replace("+asyncpg", "")
-config.set_main_option("sqlalchemy.url", sync_database_url)
+# Get database URL - handle both sync and async formats
+try:
+    database_url = os.environ.get("DATABASE_URL")
+    if database_url:
+        # Use environment variable if available
+        sync_database_url = database_url.replace("+asyncpg", "").replace("postgresql://", "postgresql://")
+    else:
+        # Fall back to settings
+        sync_database_url = settings.database_url.replace("+asyncpg", "")
+    
+    config.set_main_option("sqlalchemy.url", sync_database_url)
+except Exception as e:
+    print(f"❌ Error setting database URL: {e}")
+    print(f"   DATABASE_URL env: {os.environ.get('DATABASE_URL', 'NOT SET')}")
+    raise
 
 # Logging
 if config.config_file_name is not None:
