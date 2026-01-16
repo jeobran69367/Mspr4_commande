@@ -256,3 +256,4 @@ class RailwayRabbitMQ:
 
 # Global instance
 rabbitmq = RailwayRabbitMQ()
+#test
