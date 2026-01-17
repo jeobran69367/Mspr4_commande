@@ -51,15 +51,19 @@ except Exception as e:
     raise
 
 try:
-    # Import Base directly from base.py to avoid importing all models at once
+    # Import Base directly from base.py
     from app.models.base import Base
+    
+    # Now import all models to ensure they're registered with Base.metadata
+    # This is necessary for Alembic to discover all tables
+    from app.models import order, order_item, cart, payment, shipment, saga  # noqa: F401
 except ImportError as e:
-    print(f"❌ Failed to import app.models.base.Base: {e}")
+    print(f"❌ Failed to import app.models: {e}")
     import traceback
     traceback.print_exc()
     raise
 except Exception as e:
-    print(f"❌ Error loading app.models.base.Base: {e}")
+    print(f"❌ Error loading app.models: {e}")
     import traceback
     traceback.print_exc()
     raise
