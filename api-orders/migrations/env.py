@@ -1,45 +1,66 @@
 """Alembic environment configuration."""
 import sys
 import os
-from pathlib import Path
-from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
-from alembic import context
+# Standard library imports should work
+try:
+    from pathlib import Path
+    from logging.config import fileConfig
+    from sqlalchemy import engine_from_config, pool
+    from alembic import context
+except Exception as e:
+    print(f"❌ CRITICAL: Failed to import standard libraries: {e}")
+    import traceback
+    traceback.print_exc()
+    raise
 
 # Add the parent directory to sys.path to ensure app module can be imported
-parent_dir = str(Path(__file__).parent.parent)
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
+try:
+    parent_dir = str(Path(__file__).parent.parent)
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+except Exception as e:
+    print(f"❌ Error manipulating sys.path: {e}")
+    raise
 
-# Import app modules with better error handling
+# Import app modules with comprehensive error handling
+settings = None
+Base = None
+
 try:
     from app.config import settings
-    from app.models import Base
 except ImportError as e:
-    print(f"❌ Failed to import app modules: {e}")
-    print(f"   Current working directory: {os.getcwd()}")
+    print(f"❌ Failed to import app.config: {e}")
+    print(f"   Working directory: {os.getcwd()}")
     print(f"   sys.path: {sys.path[:3]}")
-    print(f"   Attempting to find app directory...")
     
-    # Try to provide helpful debugging info
     app_path = Path(__file__).parent.parent / "app"
+    print(f"   app directory exists: {app_path.exists()}")
     if app_path.exists():
-        print(f"   ✅ app directory exists at: {app_path}")
         config_path = app_path / "config.py"
-        if config_path.exists():
-            print(f"   ✅ config.py exists")
-        else:
-            print(f"   ❌ config.py NOT found")
-    else:
-        print(f"   ❌ app directory NOT found at: {app_path}")
+        print(f"   config.py exists: {config_path.exists()}")
     
+    import traceback
+    traceback.print_exc()
     raise
 except Exception as e:
-    print(f"❌ Error loading app configuration: {e}")
+    print(f"❌ Error loading app.config settings: {e}")
     print(f"   Error type: {type(e).__name__}")
     import traceback
-    print(f"   Traceback: {traceback.format_exc()}")
+    traceback.print_exc()
+    raise
+
+try:
+    from app.models import Base
+except ImportError as e:
+    print(f"❌ Failed to import app.models.Base: {e}")
+    import traceback
+    traceback.print_exc()
+    raise
+except Exception as e:
+    print(f"❌ Error loading app.models.Base: {e}")
+    import traceback
+    traceback.print_exc()
     raise
 
 # Alembic Config object
