@@ -51,14 +51,15 @@ except Exception as e:
     raise
 
 try:
-    from app.models import Base
+    # Import Base directly from base.py to avoid importing all models at once
+    from app.models.base import Base
 except ImportError as e:
-    print(f"❌ Failed to import app.models.Base: {e}")
+    print(f"❌ Failed to import app.models.base.Base: {e}")
     import traceback
     traceback.print_exc()
     raise
 except Exception as e:
-    print(f"❌ Error loading app.models.Base: {e}")
+    print(f"❌ Error loading app.models.base.Base: {e}")
     import traceback
     traceback.print_exc()
     raise
