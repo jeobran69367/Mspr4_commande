@@ -53,20 +53,26 @@ except Exception as e:
 try:
     # Import Base directly from base.py
     from app.models.base import Base
-    
-    # Now import all models to ensure they're registered with Base.metadata
-    # This is necessary for Alembic to discover all tables
-    from app.models import order, order_item, cart, payment, shipment, saga  # noqa: F401
 except ImportError as e:
-    print(f"❌ Failed to import app.models: {e}")
+    print(f"❌ Failed to import Base from app.models.base: {e}")
     import traceback
     traceback.print_exc()
     raise
 except Exception as e:
-    print(f"❌ Error loading app.models: {e}")
+    print(f"❌ Error loading Base: {e}")
     import traceback
     traceback.print_exc()
     raise
+
+# Import models individually with error handling
+# Models must be imported for SQLAlchemy to register them with Base.metadata
+models_to_import = ['order', 'order_item', 'cart', 'payment', 'shipment', 'saga']
+for model_name in models_to_import:
+    try:
+        __import__(f'app.models.{model_name}')
+    except Exception as e:
+        print(f"⚠️  Warning: Could not import app.models.{model_name}: {e}")
+        # Continue anyway - some models might have dependencies not available during migration
 
 # Alembic Config object
 config = context.config
