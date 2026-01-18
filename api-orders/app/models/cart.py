@@ -7,7 +7,7 @@ from sqlalchemy.orm import relationship
 import uuid
 from datetime import datetime
 
-from app.db.base_class import Base
+from app.models.base import Base
 
 
 class Cart(Base):
