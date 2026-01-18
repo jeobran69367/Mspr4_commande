@@ -188,26 +188,3 @@ class OrderService:
     async def cancel_order(self, order_id: UUID, reason: Optional[str] = None) -> Optional[Order]:
         """Cancel an order."""
         return await self.update_order_status(order_id, OrderStatus.ANNULEE, reason)
-    
-
-import pytest
-from app.services.order_service import OrderService
-
-@pytest.mark.asyncio
-async def test_create_order():
-    service = OrderService()
-    order_data = {
-        "customer_id": "12345",
-        "items": [
-            {"product_id": "67890", "quantity": 2, "unit_price_ht": 25.00}
-        ]
-    }
-    order = await service.create_order(order_data)
-    assert order.customer_id == "12345"
-    assert len(order.items) == 1
-
-@pytest.mark.asyncio
-async def test_get_order():
-    service = OrderService()
-    order = await service.get_order("12345")
-    assert order.customer_id == "12345"
