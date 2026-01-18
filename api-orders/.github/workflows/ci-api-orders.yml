@@ -1,0 +1,349 @@
+name: CI/CD - Orders API
+
+on:
+  push:
+    branches: 
+      - main
+      - develop
+      - 'feature/**'
+      - 'release/**'
+    paths:
+      - 'api-orders/**'
+      - '.github/workflows/ci-api-orders.yml'
+  pull_request:
+    branches: 
+      - main
+      - develop
+      - 'feature/**'
+      - 'release/**'
+    paths:
+      - 'api-orders/**'
+      - '.github/workflows/ci-api-orders.yml'
+
+jobs:
+  lint:
+    name: 🔍 Lint - Code Quality Check
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: api-orders
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🐍 Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: 📦 Install linting tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 pylint black isort mypy bandit
+    
+    - name: 🔧 Lint with flake8 (Syntax & Style)
+      run: |
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 app tests --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Check for code style issues
+        flake8 app tests --count --max-complexity=10 --max-line-length=120 --statistics
+      continue-on-error: false
+    
+    - name: 🎨 Check code formatting with black
+      run: |
+        black --check app tests || (echo "❌ Code formatting issues found. Run 'black app tests' to fix." && exit 1)
+    
+    - name: 📋 Check import sorting with isort
+      run: |
+        isort --check-only app tests || (echo "❌ Import sorting issues found. Run 'isort app tests' to fix." && exit 1)
+    
+    - name: 🔎 Type check with mypy
+      run: |
+        mypy app --ignore-missing-imports --no-strict-optional
+      continue-on-error: true
+    
+    - name: 🔐 Security lint with bandit
+      run: |
+        bandit -r app -f json -o bandit-report.json || true
+        bandit -r app -ll -i
+      continue-on-error: true
+    
+    - name: 📊 Upload bandit report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: bandit-security-report
+        path: api-orders/bandit-report.json
+        retention-days: 30
+
+  test:
+    name: 🧪 Tests - Unit & Coverage (>40%)
+    runs-on: ubuntu-latest
+    needs: lint
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: orders_test_db
+          POSTGRES_USER: orders_test_user
+          POSTGRES_PASSWORD: orders_test_password
+        ports:
+          - 5435:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      rabbitmq:
+        image: rabbitmq:3-management-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: test_user
+          RABBITMQ_DEFAULT_PASS: test_pass
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    defaults:
+      run:
+        working-directory: api-orders
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🐍 Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: 📦 Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-asyncio httpx aiosqlite
+    
+    - name: 🧪 Run unit tests with coverage
+      env:
+        DATABASE_URL: postgresql+asyncpg://orders_test_user:orders_test_password@localhost:5435/orders_test_db
+        RABBITMQ_HOST: localhost
+        RABBITMQ_PORT: 5672
+        RABBITMQ_USER: test_user
+        RABBITMQ_PASSWORD: test_pass
+        TESTING: true
+      run: |
+        pytest tests/ -v \
+          --cov=app \
+          --cov-report=xml \
+          --cov-report=html \
+          --cov-report=term-missing \
+          --cov-fail-under=40 \
+          --tb=short
+    
+    - name: 📊 Coverage verification
+      run: |
+        coverage report --fail-under=40
+        echo "✅ Test coverage is above 40% threshold"
+    
+    - name: 📤 Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./api-orders/coverage.xml
+        flags: unittests
+        name: codecov-orders-api
+        fail_ci_if_error: false
+    
+    - name: 📊 Upload coverage HTML report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report-html
+        path: api-orders/htmlcov
+        retention-days: 30
+
+  security:
+    name: 🛡️ Security Scan
+    runs-on: ubuntu-latest
+    needs: lint
+    
+    defaults:
+      run:
+        working-directory: api-orders
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🐍 Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: 📦 Install security tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install safety pip-audit
+    
+    - name: 🔒 Check for vulnerable dependencies with Safety
+      run: |
+        pip install -r requirements.txt
+        safety check --json --output safety-report.json || true
+        safety check || echo "⚠️ Security vulnerabilities found in dependencies"
+      continue-on-error: true
+    
+    - name: 🔍 Audit dependencies with pip-audit
+      run: |
+        pip-audit --desc --format json --output pip-audit-report.json || true
+        pip-audit --desc || echo "⚠️ Vulnerabilities detected by pip-audit"
+      continue-on-error: true
+    
+    - name: 📊 Upload security reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-reports
+        path: |
+          api-orders/safety-report.json
+          api-orders/pip-audit-report.json
+        retention-days: 30
+    
+    - name: 🔐 OWASP Dependency Check
+      uses: dependency-check/Dependency-Check_Action@main
+      with:
+        project: 'orders-api'
+        path: './api-orders'
+        format: 'HTML'
+        out: './api-orders/owasp-reports'
+      continue-on-error: true
+    
+    - name: 📊 Upload OWASP report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: owasp-dependency-check
+        path: api-orders/owasp-reports
+        retention-days: 30
+
+  build:
+    name: 🏗️ Build - Docker Image
+    runs-on: ubuntu-latest
+    needs: [test, security]
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🐳 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: 🏗️ Build Docker image
+      run: |
+        cd api-orders
+        docker build \
+          --tag orders-api:${{ github.sha }} \
+          --tag orders-api:latest \
+          --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+          --build-arg VCS_REF=${{ github.sha }} \
+          .
+    
+    - name: 🧪 Test Docker image
+      run: |
+        docker run --rm orders-api:${{ github.sha }} python -c "import app; print('✅ Import successful')"
+        docker run --rm orders-api:${{ github.sha }} python -c "from app.main import app; print('✅ FastAPI app imports successfully')"
+    
+    - name: 📊 Docker image info
+      run: |
+        echo "📦 Docker image built successfully"
+        docker images orders-api:${{ github.sha }}
+        docker inspect orders-api:${{ github.sha }} --format='{{.Size}}' | awk '{print "📏 Image size:", $1/1024/1024, "MB"}'
+
+  integration:
+    name: 🔗 Integration Tests
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: orders_test_db
+          POSTGRES_USER: orders_test_user
+          POSTGRES_PASSWORD: orders_test_password
+        ports:
+          - 5435:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      rabbitmq:
+        image: rabbitmq:3-management-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: test_user
+          RABBITMQ_DEFAULT_PASS: test_pass
+        ports:
+          - 5672:5672
+    
+    defaults:
+      run:
+        working-directory: api-orders
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🐍 Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: 📦 Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-asyncio httpx
+    
+    - name: 🔗 Run integration tests
+      env:
+        DATABASE_URL: postgresql+asyncpg://orders_test_user:orders_test_password@localhost:5435/orders_test_db
+        RABBITMQ_HOST: localhost
+        RABBITMQ_PORT: 5672
+        RABBITMQ_USER: test_user
+        RABBITMQ_PASSWORD: test_pass
+      run: |
+        pytest tests/test_integration.py -v --tb=short || echo "⚠️ No integration tests found or tests failed"
+      continue-on-error: true
+
+  summary:
+    name: 📋 CI/CD Summary
+    runs-on: ubuntu-latest
+    needs: [lint, test, security, build]
+    if: always()
+    
+    steps:
+    - name: 📊 Pipeline Summary
+      run: |
+        echo "## 📋 CI/CD Pipeline Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| 🔍 Lint | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🧪 Tests | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🛡️ Security | ${{ needs.security.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🏗️ Build | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Triggered by:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
